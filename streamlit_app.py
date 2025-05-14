@@ -1,47 +1,63 @@
 import streamlit as st
 from openai import OpenAI
-import os
 
-st.title("Inteligencia Artificial para encontrar teoremas de matemáticas")
+# Título y descripción
+st.title("🧮 Inteligencia Artificial para Teoremas Matemáticos")
+st.write(
+    "Este asistente especializado en matemáticas de pregrado puede ayudarte a encontrar y demostrar teoremas. "
+    "Proporcione la contraseña de acceso para comenzar."
+)
 
-# Solicitar contraseña de API
-api_password = st.text_input("Ingrese la contraseña del API:", type="password")
+# Entrada para la contraseña
+api_password = st.text_input("🔑 Contraseña de acceso", type="password")
 
-# Contraseña correcta (deberías usar un método más seguro en producción)
-CORRECT_PASSWORD = "password123"  # Cambia esto por una contraseña segura
+# Verificar si se ingresó una contraseña
+if not api_password:
+    st.info("Por favor ingresa la contraseña para continuar.", icon="🗝️")
+    st.stop()
 
-if api_password:
-    if api_password == CORRECT_PASSWORD:
-        try:
-            # Configurar el cliente de OpenAI
-            client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            
-            st.markdown("Escribe de qué se trata el teorema de matemáticas especificando el área relacionada de pregrado." \
-                       "La IA solo responde preguntas relacionadas al tema.")
+# Crear cliente de OpenAI usando la contraseña ingresada como API key
+client = OpenAI(api_key=api_password)
 
-            question = st.text_input("Escribe tu pregunta:")
+# Estado del chat con prompt especializado
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {
+            "role": "system",
+            "content": (
+                "Eres un experto en matemáticas de pregrado que conoce todos los teoremas, lemas, "
+                "corolarios y definiciones de las materias de pregrado. Además, debes demostrar todo "
+                "formalmente. Proporciona las definiciones clave involucradas en el teorema. "
+                "Si lo que se menciona no es verdad, proporciona un contraejemplo. "
+                "Si te preguntan sobre cualquier otro tema, responde: 'No conozco sobre ese tema'"
+            )
+        }
+    ]
 
-            prompt = ("Eres un experto en matemáticas de pregrado que conoce todos los teoremas, lemas, corolarios y definiciones"
-                    " de las materias de pregrado. Además, debes de demostrarlo formalmente. También, debes de proveer las definiciones "
-                    "claves que involucran en el teorema. Si lo que se menciona no es verdad proporciona un contraejemplo."
-                    "Si te preguntan sobre cualquier otro tema, responde: 'No conozco sobre ese tema'"
+# Mostrar historial del chat (omitimos el mensaje del sistema)
+for msg in st.session_state.messages[1:]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Entrada de chat
+if prompt := st.chat_input("Escribe tu pregunta sobre teoremas matemáticos..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    try:
+        # Respuesta del modelo con streaming
+        with st.spinner("🧠 Pensando..."):
+            stream = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=st.session_state.messages,
+                stream=True
             )
 
-            if question:
-                with st.spinner("Pensando..."):
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": question}
-                        ]
-                    )
-                    st.success("Respuesta:")
-                    st.markdown(response.choices[0].message.content)
-        
-        except Exception as e:
-            st.error(f"Error al conectar con la API: {str(e)}")
-    else:
-        st.error("Contraseña incorrecta. Por favor, ingrese la contraseña válida.")
-else:
-    st.warning("Por favor, ingrese la contraseña del API para continuar.")
+            # Mostrar y guardar respuesta
+            with st.chat_message("assistant"):
+                response = st.write_stream(stream)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+    except Exception as e:
+        st.error(f"❌ Error al consultar la API: {e}")
